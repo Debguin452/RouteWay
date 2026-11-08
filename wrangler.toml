@@ -1,0 +1,24 @@
+name = "secure-proxy-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "secure-proxy-db"
+database_id = "replace-with-your-d1-database-id"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "replace-with-your-kv-namespace-id"
+
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]
+
+[vars]
+DASHBOARD_ORIGIN = "https://your-dashboard.pages.dev"

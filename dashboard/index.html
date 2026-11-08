@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Routeway</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="banner" class="banner" hidden></div>
+
+<header class="topbar">
+  <span class="wordmark">Routeway</span>
+  <div id="accountBox" class="account-box" hidden>
+    <span id="accountEmail" class="account-email"></span>
+    <button id="logoutButton" class="button button-ghost">Sign out</button>
+  </div>
+</header>
+
+<main id="authView" class="auth-view">
+  <section class="auth-panel">
+    <h1>A fixed door between your app and one API key.</h1>
+    <p class="auth-sub">Create a route, get a token. The token only ever reaches the one URL you locked it to.</p>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="auth-tab is-active" type="button">Sign in</button>
+      <button id="tabSignup" class="auth-tab" type="button">Create account</button>
+    </div>
+    <form id="authForm" class="auth-form">
+      <label class="field">
+        <span>Email</span>
+        <input id="authEmail" type="email" required autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input id="authPassword" type="password" required autocomplete="current-password" minlength="10" />
+      </label>
+      <p id="authHint" class="field-hint">At least 10 characters.</p>
+      <button type="submit" class="button button-primary" id="authSubmit">Sign in</button>
+    </form>
+  </section>
+</main>
+
+<main id="appView" class="app-view" hidden>
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <h2>Projects</h2>
+      <button id="newProjectButton" class="button button-small" type="button">New</button>
+    </div>
+    <ul id="projectList" class="project-list"></ul>
+    <form id="newProjectForm" class="inline-form" hidden>
+      <input id="newProjectName" type="text" placeholder="Project name" maxlength="80" required />
+      <div class="inline-form-actions">
+        <button type="submit" class="button button-small button-primary">Create</button>
+        <button type="button" class="button button-small" id="cancelNewProject">Cancel</button>
+      </div>
+    </form>
+  </aside>
+
+  <section class="register">
+    <div id="emptyProjects" class="empty-state" hidden>
+      <p>No projects yet. Create one to start routing a key.</p>
+    </div>
+
+    <div id="projectDetail" class="project-detail" hidden>
+      <div class="register-head">
+        <h2 id="projectName"></h2>
+        <button id="newRouteButton" class="button button-small button-primary" type="button">New route</button>
+      </div>
+
+      <form id="newRouteForm" class="route-form" hidden>
+        <div class="route-form-grid">
+          <label class="field">
+            <span>Label</span>
+            <input id="routeLabel" type="text" placeholder="openai-chat" pattern="[a-z0-9-]+" maxlength="40" required />
+          </label>
+          <label class="field">
+            <span>Target URL</span>
+            <input id="routeTargetUrl" type="url" placeholder="https://api.openai.com/v1/chat/completions" required />
+          </label>
+          <label class="field">
+            <span>Inject secret as</span>
+            <select id="routeInjectAs">
+              <option value="header">Header</option>
+              <option value="query">Query parameter</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Header / parameter name</span>
+            <input id="routeInjectKey" type="text" placeholder="Authorization" required />
+          </label>
+          <label class="field field-wide">
+            <span>Secret value</span>
+            <input id="routeSecret" type="password" placeholder="Bearer sk-..." required />
+          </label>
+          <label class="field">
+            <span>Allowed browser origin (optional)</span>
+            <input id="routeAllowedOrigin" type="text" placeholder="https://myapp.com" />
+          </label>
+          <label class="field">
+            <span>Rate limit (per minute)</span>
+            <input id="routeRateLimit" type="number" min="1" max="6000" value="60" required />
+          </label>
+        </div>
+        <div class="inline-form-actions">
+          <button type="submit" class="button button-primary">Create route</button>
+          <button type="button" class="button" id="cancelNewRoute">Cancel</button>
+        </div>
+      </form>
+
+      <div id="tokenReveal" class="token-reveal" hidden>
+        <p class="token-reveal-label">This token will not be shown again.</p>
+        <code id="tokenRevealValue" class="token-reveal-value"></code>
+        <button id="copyTokenButton" class="button button-small" type="button">Copy</button>
+      </div>
+
+      <div id="emptyRoutes" class="empty-state" hidden>
+        <p>No routes yet. Add one to get a token.</p>
+      </div>
+
+      <ul id="routeList" class="route-list"></ul>
+    </div>
+  </section>
+</main>
+
+<template id="routeRowTemplate">
+  <li class="route-row">
+    <div class="route-row-main">
+      <span class="status-dot"></span>
+      <div class="route-row-text">
+        <span class="route-label"></span>
+        <span class="route-url"></span>
+      </div>
+    </div>
+    <div class="route-row-meta">
+      <span class="route-inject"></span>
+      <span class="route-rate"></span>
+    </div>
+    <div class="route-row-actions">
+      <button class="button button-small toggle-pause" type="button"></button>
+      <button class="button button-small show-tokens" type="button">Tokens</button>
+    </div>
+    <ul class="token-sublist" hidden></ul>
+  </li>
+</template>
+
+<template id="tokenRowTemplate">
+  <li class="token-row">
+    <span class="token-status"></span>
+    <span class="token-created"></span>
+    <button class="button button-small button-danger revoke-token" type="button">Revoke</button>
+  </li>
+</template>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
