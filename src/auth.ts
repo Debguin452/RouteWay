@@ -20,11 +20,11 @@ function parseCookies(request: Request): Record<string, string> {
 }
 
 function sessionCookie(sessionId: string): string {
-  return `session=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
+  return `session=${sessionId}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
 }
 
 function clearSessionCookie(): string {
-  return "session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0";
+  return "session=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0";
 }
 
 export async function getSession(request: Request, env: Env): Promise<{ sessionId: string; data: SessionData } | null> {

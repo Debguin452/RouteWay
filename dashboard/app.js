@@ -13,12 +13,29 @@ const el = (id) => document.getElementById(id);
 const banner = el("banner");
 
 function showBanner(message) {
-  banner.textContent = message;
+  banner.textContent = `${message} (tap to dismiss)`;
   banner.hidden = false;
   clearTimeout(showBanner.timer);
   showBanner.timer = setTimeout(() => {
     banner.hidden = true;
   }, 6000);
+}
+
+banner.addEventListener("click", () => {
+  banner.hidden = true;
+  clearTimeout(showBanner.timer);
+});
+
+async function withLoading(button, label, fn) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = label;
+  try {
+    await fn();
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 async function api(path, options = {}) {
@@ -77,14 +94,16 @@ async function handleAuthSubmit(event) {
   const password = el("authPassword").value;
   const path = mode === "login" ? "/api/login" : "/api/signup";
 
-  try {
-    const data = await api(path, { method: "POST", body: JSON.stringify({ email, password }) });
-    state.csrf = data.csrf;
-    state.user = data.user;
-    await enterApp();
-  } catch {
-    /* banner already shown by api() */
-  }
+  await withLoading(el("authSubmit"), mode === "login" ? "Signing in..." : "Creating account...", async () => {
+    try {
+      const data = await api(path, { method: "POST", body: JSON.stringify({ email, password }) });
+      state.csrf = data.csrf;
+      state.user = data.user;
+      await enterApp();
+    } catch {
+      /* banner already shown by api() */
+    }
+  });
 }
 
 async function handleLogout() {
@@ -170,7 +189,7 @@ function renderRouteList() {
 
     const pauseButton = node.querySelector(".toggle-pause");
     pauseButton.textContent = route.paused ? "Resume" : "Pause";
-    pauseButton.addEventListener("click", () => togglePause(route));
+    pauseButton.addEventListener("click", () => togglePause(route, pauseButton));
 
     node.querySelector(".show-tokens").addEventListener("click", (event) =>
       toggleTokenSublist(route.id, event.currentTarget.closest(".route-row"))
@@ -180,12 +199,14 @@ function renderRouteList() {
   }
 }
 
-async function togglePause(route) {
-  await api(`/api/routes/${route.id}/pause`, {
-    method: "POST",
-    body: JSON.stringify({ paused: !route.paused }),
+async function togglePause(route, button) {
+  await withLoading(button, "...", async () => {
+    await api(`/api/routes/${route.id}/pause`, {
+      method: "POST",
+      body: JSON.stringify({ paused: !route.paused }),
+    });
+    await loadRoutes();
   });
-  await loadRoutes();
 }
 
 async function toggleTokenSublist(routeId, rowEl) {
@@ -213,7 +234,9 @@ function renderTokenSublist(routeId, sublist) {
       revokeButton.disabled = true;
       revokeButton.textContent = "Revoked";
     } else {
-      revokeButton.addEventListener("click", () => revokeToken(routeId, token.id, sublist));
+      revokeButton.addEventListener("click", () =>
+        withLoading(revokeButton, "Revoking...", () => revokeToken(routeId, token.id, sublist))
+      );
     }
     sublist.appendChild(node);
   }
@@ -222,14 +245,14 @@ function renderTokenSublist(routeId, sublist) {
   addButton.type = "button";
   addButton.className = "button button-small";
   addButton.textContent = "Issue new token";
-  addButton.addEventListener("click", () => issueToken(routeId, sublist));
+  addButton.addEventListener("click", () => withLoading(addButton, "Issuing...", () => issueToken(routeId, sublist)));
   sublist.appendChild(addButton);
 }
 
 async function issueToken(routeId, sublist) {
   const data = await api(`/api/routes/${routeId}/tokens`, { method: "POST" });
-  const data2 = await api(`/api/routes/${routeId}/tokens`);
-  state.tokensByRoute[routeId] = data2.tokens;
+  const existing = state.tokensByRoute[routeId] || [];
+  state.tokensByRoute[routeId] = [{ id: data.tokenId, revoked: 0, created_at: Date.now() }, ...existing];
   renderTokenSublist(routeId, sublist);
   showTokenReveal(data.token);
 }
@@ -248,16 +271,24 @@ function showTokenReveal(token) {
 
 async function handleNewProjectSubmit(event) {
   event.preventDefault();
+  const button = event.target.querySelector('button[type="submit"]');
   const name = el("newProjectName").value.trim();
-  const data = await api("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
-  el("newProjectForm").hidden = true;
-  el("newProjectName").value = "";
-  await loadProjects();
-  selectProject(data.project.id);
+  await withLoading(button, "Creating...", async () => {
+    try {
+      const data = await api("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
+      el("newProjectForm").hidden = true;
+      el("newProjectName").value = "";
+      await loadProjects();
+      selectProject(data.project.id);
+    } catch {
+      /* banner already shown by api() */
+    }
+  });
 }
 
 async function handleNewRouteSubmit(event) {
   event.preventDefault();
+  const button = event.target.querySelector('button[type="submit"]');
   const body = {
     label: el("routeLabel").value.trim(),
     targetUrl: el("routeTargetUrl").value.trim(),
@@ -268,15 +299,21 @@ async function handleNewRouteSubmit(event) {
     rateLimitPerMinute: Number(el("routeRateLimit").value),
   };
 
-  const data = await api(`/api/projects/${state.selectedProjectId}/routes`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  await withLoading(button, "Creating...", async () => {
+    try {
+      const data = await api(`/api/projects/${state.selectedProjectId}/routes`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
 
-  el("newRouteForm").hidden = true;
-  el("newRouteForm").reset();
-  await loadRoutes();
-  showTokenReveal(data.token);
+      el("newRouteForm").hidden = true;
+      el("newRouteForm").reset();
+      await loadRoutes();
+      showTokenReveal(data.token);
+    } catch {
+      /* banner already shown by api() */
+    }
+  });
 }
 
 function wireStaticEvents() {
@@ -304,8 +341,12 @@ function wireStaticEvents() {
   el("newRouteForm").addEventListener("submit", handleNewRouteSubmit);
 
   el("copyTokenButton").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(el("tokenRevealValue").textContent);
-    el("copyTokenButton").textContent = "Copied";
+    try {
+      await navigator.clipboard.writeText(el("tokenRevealValue").textContent);
+      el("copyTokenButton").textContent = "Copied";
+    } catch {
+      showBanner("Could not copy automatically. Select the token text and copy it manually.");
+    }
     setTimeout(() => {
       el("copyTokenButton").textContent = "Copy";
     }, 1500);
