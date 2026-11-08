@@ -21,15 +21,20 @@ const HOP_BY_HOP = new Set([
 ]);
 
 export async function handleProxyPreflight(request: Request, env: Env, token: string): Promise<Response> {
-  const tokenHash = await sha256Hex(token);
-  const row = await getTokenWithRouteByHash(env, tokenHash);
+  let row: TokenJoinRow | null;
+  try {
+    row = await getTokenWithRouteByHash(env, await sha256Hex(token));
+  } catch (err) {
+    console.error("proxy preflight lookup failed", err);
+    return jsonError("internal_error", "Something went wrong looking up this token.", 500);
+  }
   const origin = request.headers.get("origin");
 
   if (!row || !row.allowed_origin) {
     return new Response(null, { status: 204 });
   }
 
-  const headers = corsHeaders(origin, row.allowed_origin, false);
+  const headers = corsHeaders(origin, row.allowed_origin, false, request.headers.get("access-control-request-headers"));
   return new Response(null, { status: 204, headers });
 }
 
@@ -44,7 +49,7 @@ export async function handleProxy(request: Request, env: Env, token: string): Pr
   }
 
   const origin = request.headers.get("origin");
-  const cors = row?.allowed_origin ? corsHeaders(origin, row.allowed_origin, false) : {};
+  const cors = row?.allowed_origin ? corsHeaders(origin, row.allowed_origin, false, request.headers.get("access-control-request-headers")) : {};
 
   if (!row) {
     return jsonError("invalid_token", "This token is invalid or does not exist.", 401, cors);
@@ -135,10 +140,13 @@ export async function handleProxy(request: Request, env: Env, token: string): Pr
   clearTimeout(timeout);
 
   const responseHeaders = new Headers();
+  // Drop headers that would leak upstream cookies, override our CORS policy, or mismatch the
+  // already-decoded body Workers hands us (content-encoding / content-length).
+  const DROP_RESPONSE = new Set(["set-cookie", "set-cookie2", "content-encoding", "content-length", "transfer-encoding"]);
   for (const [key, value] of upstreamResponse.headers.entries()) {
-    if (key.toLowerCase() !== "set-cookie") {
-      responseHeaders.set(key, value);
-    }
+    const k = key.toLowerCase();
+    if (DROP_RESPONSE.has(k) || k.startsWith("access-control-")) continue;
+    responseHeaders.set(key, value);
   }
   for (const [key, value] of Object.entries(cors)) {
     responseHeaders.set(key, value);

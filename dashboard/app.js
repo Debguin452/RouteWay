@@ -1,6 +1,20 @@
 const API_BASE = window.ROUTEWAY_API_BASE;
 
+// Session token kept in sessionStorage as a fallback for browsers that block third-party cookies
+// (the dashboard and API are on different sites). Cleared on sign-out and when the tab closes.
+const TOKEN_KEY = "routeway_session";
+function loadToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+function saveToken(token) {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch { /* storage unavailable; cookie auth still works */ }
+}
+
 const state = {
+  sessionToken: loadToken(),
   csrf: null,
   user: null,
   projects: [],
@@ -43,6 +57,9 @@ async function api(path, options = {}) {
   if (state.csrf && options.method && options.method !== "GET") {
     headers["x-csrf-token"] = state.csrf;
   }
+  if (state.sessionToken) {
+    headers["authorization"] = `Bearer ${state.sessionToken}`;
+  }
 
   let response;
   try {
@@ -52,7 +69,7 @@ async function api(path, options = {}) {
       credentials: "include",
     });
   } catch {
-    showBanner("Could not reach the server. Check your connection and try again.");
+    showBanner(`Could not reach the server, or the browser blocked its response. Open ${API_BASE}/api/debug to see which part is failing.`);
     throw new Error("network_error");
   }
 
@@ -99,6 +116,8 @@ async function handleAuthSubmit(event) {
       const data = await api(path, { method: "POST", body: JSON.stringify({ email, password }) });
       state.csrf = data.csrf;
       state.user = data.user;
+      state.sessionToken = data.sessionToken || null;
+      saveToken(state.sessionToken);
       await enterApp();
     } catch {
       /* banner already shown by api() */
@@ -114,6 +133,8 @@ async function handleLogout() {
   }
   state.csrf = null;
   state.user = null;
+  state.sessionToken = null;
+  saveToken(null);
   el("appView").hidden = true;
   el("accountBox").hidden = true;
   el("authView").hidden = false;
@@ -362,6 +383,9 @@ async function init() {
     state.user = data.user;
     await enterApp();
   } catch {
+    // Not signed in (or the stored token expired): drop it and show the login form.
+    state.sessionToken = null;
+    saveToken(null);
     el("authView").hidden = false;
   }
 }

@@ -11,7 +11,8 @@ import {
   handleRevokeToken,
 } from "./projects";
 import { handleProxy, handleProxyPreflight } from "./proxy";
-import { jsonError, jsonOk, corsHeaders } from "./responses";
+import { jsonError, corsHeaders, withHeaders } from "./responses";
+import { handleDebug } from "./debug";
 
 export { RateLimiter } from "./rateLimiter";
 
@@ -19,17 +20,33 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    try {
-      return await route(request, env);
-    } catch (err) {
-      console.error("unhandled error", err);
-      return jsonError("internal_error", "Something went wrong on our end.", 500);
+    const url = new URL(request.url);
+    const isProxy = url.pathname.startsWith("/proxy/");
+
+    // CORS for the dashboard is decided up front and attached to EVERY non-proxy response,
+    // including crashes, 404s and the debug page. A cross-origin response without these headers
+    // is hidden from the browser and looks like "can't reach the server".
+    const dashboardCors = isProxy
+      ? {}
+      : corsHeaders(request.headers.get("origin"), env.DASHBOARD_ORIGIN, true, request.headers.get("access-control-request-headers"));
+
+    // Preflight for dashboard routes is answered before anything that touches D1, KV or Durable Objects.
+    if (!isProxy && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: dashboardCors });
     }
+
+    let response: Response;
+    try {
+      response = await route(request, env, url);
+    } catch (err) {
+      console.error("unhandled error", err instanceof Error ? err.stack : err);
+      response = jsonError("internal_error", "Something went wrong on our end.", 500);
+    }
+    return isProxy ? response : withHeaders(response, dashboardCors);
   },
 };
 
-async function route(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
+async function route(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
 
   if (path.startsWith("/proxy/")) {
@@ -44,28 +61,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/debug" && request.method === "GET") {
-    return jsonOk({
-      dashboardOriginSeenByWorker: env.DASHBOARD_ORIGIN ?? "NOT SET",
-      originSentByThisRequest: request.headers.get("origin") ?? "no origin header on a plain visit, that's expected",
-    });
+    return handleDebug(request, env);
   }
 
   if (!path.startsWith("/api/")) {
     return jsonError("not_found", "No such endpoint.", 404);
   }
 
-  const origin = request.headers.get("origin");
-  const cors = corsHeaders(origin, env.DASHBOARD_ORIGIN, true);
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: cors });
-  }
-
-  const response = await handleApi(request, env, path);
-  for (const [key, value] of Object.entries(cors)) {
-    response.headers.set(key, value);
-  }
-  return response;
+  return handleApi(request, env, path);
 }
 
 async function handleApi(request: Request, env: Env, path: string): Promise<Response> {

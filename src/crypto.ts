@@ -8,12 +8,20 @@ function toHex(buffer: ArrayBuffer): string {
 }
 
 function fromHex(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0 || /[^0-9a-fA-F]/.test(hex)) {
+    throw new Error("invalid hex string");
+  }
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 }
+
+// Cloudflare Workers rejects PBKDF2 iteration counts above 100,000 (NotSupportedError),
+// and `wrangler dev` does NOT enforce this, so it only fails once deployed.
+export const PBKDF2_ITERATIONS = 100_000;
+const HASH_PREFIX = "pbkdf2-sha256";
 
 export function randomId(): string {
   return crypto.randomUUID();
@@ -32,26 +40,55 @@ export async function sha256Hex(input: string): Promise<string> {
   return toHex(digest);
 }
 
-export async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+async function derive(password: string, salt: Uint8Array, iterations: number): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" }, keyMaterial, 256);
-  return { hash: toHex(bits), salt: toHex(salt.buffer as ArrayBuffer) };
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: salt.buffer as ArrayBuffer, iterations, hash: "SHA-256" },
+    keyMaterial,
+    256
+  );
+  return toHex(bits);
 }
 
-export async function verifyPassword(password: string, hash: string, saltHex: string): Promise<boolean> {
-  const salt = fromHex(saltHex);
-  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: salt.buffer as ArrayBuffer, iterations: 600000, hash: "SHA-256" }, keyMaterial, 256);
-  const computed = toHex(bits);
-  if (computed.length !== hash.length) return false;
+/** The stored hash embeds its iteration count: pbkdf2-sha256$<iterations>$<hex>. */
+export function resolveIterations(configured?: string): number {
+  const n = Number(configured);
+  if (!configured || !Number.isInteger(n)) return PBKDF2_ITERATIONS;
+  return Math.min(PBKDF2_ITERATIONS, Math.max(1000, n));
+}
+
+export async function hashPassword(password: string, iterations: number = PBKDF2_ITERATIONS): Promise<{ hash: string; salt: string }> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derived = await derive(password, salt, iterations);
+  return { hash: `${HASH_PREFIX}$${iterations}$${derived}`, salt: toHex(salt.buffer as ArrayBuffer) };
+}
+
+export async function verifyPassword(password: string, stored: string, saltHex: string): Promise<boolean> {
+  let iterations = PBKDF2_ITERATIONS;
+  let expected = stored;
+  const parts = stored.split("$");
+  if (parts.length === 3 && parts[0] === HASH_PREFIX) {
+    iterations = Number(parts[1]);
+    expected = parts[2];
+    if (!Number.isInteger(iterations) || iterations < 1 || iterations > PBKDF2_ITERATIONS) return false;
+  }
+  const computed = await derive(password, fromHex(saltHex), iterations);
+  if (computed.length !== expected.length) return false;
   let diff = 0;
-  for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ hash.charCodeAt(i);
+  for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ expected.charCodeAt(i);
   return diff === 0;
 }
 
+export function validateMasterKey(masterKeyHex: string | undefined): string {
+  const key = (masterKeyHex ?? "").trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error("MASTER_KEY is missing or not 64 hex characters. Generate one with: openssl rand -hex 32, then: wrangler secret put MASTER_KEY");
+  }
+  return key;
+}
+
 async function importMasterKey(masterKeyHex: string): Promise<CryptoKey> {
-  const raw = fromHex(masterKeyHex);
+  const raw = fromHex(validateMasterKey(masterKeyHex));
   return crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 

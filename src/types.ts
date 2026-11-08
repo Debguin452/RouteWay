@@ -4,6 +4,10 @@ export interface Env {
   RATE_LIMITER: DurableObjectNamespace;
   MASTER_KEY: string;
   DASHBOARD_ORIGIN: string;
+  /** Optional. If set, /api/debug requires ?key=<DEBUG_TOKEN>. */
+  DEBUG_TOKEN?: string;
+  /** Optional. PBKDF2 iterations for NEW password hashes (1000 to 100000, default 100000). Lower it if the free plan's 10 ms CPU limit is exceeded. */
+  PBKDF2_ITERATIONS?: string;
 }
 
 export interface SessionData {

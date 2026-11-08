@@ -1,6 +1,6 @@
 import type { Env, SessionData } from "./types";
 import { getUserByEmail, createUser, getUserById } from "./db";
-import { hashPassword, verifyPassword, randomId, randomToken } from "./crypto";
+import { hashPassword, verifyPassword, randomId, randomToken, resolveIterations } from "./crypto";
 import { jsonError, jsonOk } from "./responses";
 import { checkRateLimit } from "./rateLimiter";
 
@@ -28,12 +28,18 @@ function clearSessionCookie(): string {
 }
 
 export async function getSession(request: Request, env: Env): Promise<{ sessionId: string; data: SessionData } | null> {
-  const cookies = parseCookies(request);
-  const sessionId = cookies.session;
+  // Cookie first; fall back to a Bearer token for browsers that block third-party cookies
+  // (Safari, Chrome Incognito), since the dashboard and API live on different sites.
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  const sessionId = parseCookies(request).session || bearer;
   if (!sessionId) return null;
   const raw = await env.SESSIONS.get(`session:${sessionId}`);
   if (!raw) return null;
-  return { sessionId, data: JSON.parse(raw) as SessionData };
+  try {
+    return { sessionId, data: JSON.parse(raw) as SessionData };
+  } catch {
+    return null;
+  }
 }
 
 export function requireCsrf(request: Request, session: SessionData): Response | null {
@@ -74,9 +80,17 @@ export async function handleSignup(request: Request, env: Env): Promise<Response
     return jsonError("email_taken", "An account with this email already exists.", 409);
   }
 
-  const { hash, salt } = await hashPassword(password);
+  const { hash, salt } = await hashPassword(password, resolveIterations(env.PBKDF2_ITERATIONS));
   const userId = randomId();
-  await createUser(env, userId, email, hash, salt);
+  try {
+    await createUser(env, userId, email, hash, salt);
+  } catch (err) {
+    // Two simultaneous signups can both pass the check above; the UNIQUE constraint catches the loser.
+    if (err instanceof Error && /UNIQUE|constraint/i.test(err.message)) {
+      return jsonError("email_taken", "An account with this email already exists.", 409);
+    }
+    throw err;
+  }
 
   return startSession(env, userId, email);
 }
@@ -119,7 +133,7 @@ async function startSession(env: Env, userId: string, email: string): Promise<Re
   await env.SESSIONS.put(`session:${sessionId}`, JSON.stringify(data), { expirationTtl: SESSION_TTL_SECONDS });
 
   return jsonOk(
-    { user: { id: userId, email }, csrf },
+    { user: { id: userId, email }, csrf, sessionToken: sessionId },
     200,
     { "Set-Cookie": sessionCookie(sessionId) }
   );
