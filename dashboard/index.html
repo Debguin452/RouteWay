@@ -72,13 +72,24 @@
 
       <form id="newRouteForm" class="route-form" hidden>
         <div class="route-form-grid">
+          <label class="field field-wide">
+            <span>Start from a preset (optional)</span>
+            <select id="routePreset">
+              <option value="">Custom API</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openweather">OpenWeather</option>
+            </select>
+          </label>
           <label class="field">
             <span>Label</span>
             <input id="routeLabel" type="text" placeholder="openai-chat" pattern="[a-z0-9-]+" maxlength="40" required />
           </label>
           <label class="field">
-            <span>Target URL</span>
-            <input id="routeTargetUrl" type="url" placeholder="https://api.openai.com/v1/chat/completions" required />
+            <span>Base URL</span>
+            <input id="routeTargetUrl" type="url" placeholder="https://api.openai.com/v1" required />
+            <small class="field-hint">Callers can add any path under this URL, like /chat/completions. Nothing outside it is reachable.</small>
           </label>
           <label class="field">
             <span>Inject secret as</span>
@@ -114,6 +125,9 @@
         <p class="token-reveal-label">This token will not be shown again.</p>
         <code id="tokenRevealValue" class="token-reveal-value"></code>
         <button id="copyTokenButton" class="button button-small" type="button">Copy</button>
+        <p class="token-reveal-label">Use it like this (swap the end of the URL for the API path you need):</p>
+        <pre id="tokenSnippet" class="token-reveal-value"></pre>
+        <button id="copySnippetButton" class="button button-small" type="button">Copy example</button>
       </div>
 
       <div id="emptyRoutes" class="empty-state" hidden>

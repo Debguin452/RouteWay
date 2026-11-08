@@ -3,6 +3,7 @@ import { getTokenWithRouteByHash } from "./db";
 import { decryptSecret, sha256Hex } from "./crypto";
 import { jsonError, corsHeaders } from "./responses";
 import { checkRateLimit } from "./rateLimiter";
+import { buildTargetUrl } from "./target";
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 10000;
@@ -38,7 +39,7 @@ export async function handleProxyPreflight(request: Request, env: Env, token: st
   return new Response(null, { status: 204, headers });
 }
 
-export async function handleProxy(request: Request, env: Env, token: string): Promise<Response> {
+export async function handleProxy(request: Request, env: Env, token: string, restPath = "", clientSearch = ""): Promise<Response> {
   let row: TokenJoinRow | null;
   try {
     const tokenHash = await sha256Hex(token);
@@ -95,12 +96,15 @@ export async function handleProxy(request: Request, env: Env, token: string): Pr
     return jsonError("internal_error", "Could not prepare this route right now.", 500, cors);
   }
 
-  let targetUrl: URL;
+  let targetUrl: URL | null;
   try {
-    targetUrl = new URL(row.target_url);
+    targetUrl = buildTargetUrl(row.target_url, restPath, clientSearch);
   } catch {
     console.error("route has invalid target_url", row.route_id);
     return jsonError("internal_error", "This route is misconfigured.", 500, cors);
+  }
+  if (!targetUrl) {
+    return jsonError("invalid_path", "That path is not allowed for this token.", 400, cors);
   }
 
   if (row.inject_as === "query") {

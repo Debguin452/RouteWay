@@ -275,7 +275,7 @@ async function issueToken(routeId, sublist) {
   const existing = state.tokensByRoute[routeId] || [];
   state.tokensByRoute[routeId] = [{ id: data.tokenId, revoked: 0, created_at: Date.now() }, ...existing];
   renderTokenSublist(routeId, sublist);
-  showTokenReveal(data.token);
+  showTokenReveal(data.token, state.routes.find((r) => r.id === routeId) && { targetUrl: state.routes.find((r) => r.id === routeId).target_url });
 }
 
 async function revokeToken(routeId, tokenId, sublist) {
@@ -285,9 +285,37 @@ async function revokeToken(routeId, tokenId, sublist) {
   renderTokenSublist(routeId, sublist);
 }
 
-function showTokenReveal(token) {
+function showTokenReveal(token, route) {
   el("tokenRevealValue").textContent = token;
+  const base = `${API_BASE}/proxy/${token}`;
+  let path = "/";
+  let method = "GET";
+  let body = "";
+  if (route && route.targetUrl && /openai|anthropic/.test(route.targetUrl)) {
+    path = route.targetUrl.includes("anthropic") ? "/messages" : "/chat/completions";
+    method = "POST";
+    body = `,\n  headers: { "Content-Type": "application/json" },\n  body: JSON.stringify({ /* request body */ })`;
+  }
+  el("tokenSnippet").textContent =
+    `const res = await fetch("${base}${path}", {\n  method: "${method}"${body}\n});\nconst data = await res.json();`;
   el("tokenReveal").hidden = false;
+}
+
+const PRESETS = {
+  openai: { label: "openai", url: "https://api.openai.com/v1", injectAs: "header", key: "Authorization", secretHint: "Bearer sk-..." },
+  anthropic: { label: "anthropic", url: "https://api.anthropic.com/v1", injectAs: "header", key: "x-api-key", secretHint: "sk-ant-..." },
+  gemini: { label: "gemini", url: "https://generativelanguage.googleapis.com", injectAs: "query", key: "key", secretHint: "Your Gemini API key" },
+  openweather: { label: "openweather", url: "https://api.openweathermap.org", injectAs: "query", key: "appid", secretHint: "Your OpenWeather API key" },
+};
+
+function applyPreset() {
+  const preset = PRESETS[el("routePreset").value];
+  if (!preset) return;
+  el("routeLabel").value = preset.label;
+  el("routeTargetUrl").value = preset.url;
+  el("routeInjectAs").value = preset.injectAs;
+  el("routeInjectKey").value = preset.key;
+  el("routeSecret").placeholder = preset.secretHint;
 }
 
 async function handleNewProjectSubmit(event) {
@@ -330,7 +358,7 @@ async function handleNewRouteSubmit(event) {
       el("newRouteForm").hidden = true;
       el("newRouteForm").reset();
       await loadRoutes();
-      showTokenReveal(data.token);
+      showTokenReveal(data.token, data.route);
     } catch {
       /* banner already shown by api() */
     }
@@ -360,6 +388,19 @@ function wireStaticEvents() {
     el("newRouteForm").hidden = true;
   });
   el("newRouteForm").addEventListener("submit", handleNewRouteSubmit);
+
+  el("routePreset").addEventListener("change", applyPreset);
+  el("copySnippetButton").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(el("tokenSnippet").textContent);
+      el("copySnippetButton").textContent = "Copied";
+    } catch {
+      showBanner("Could not copy automatically. Select the example text and copy it manually.");
+    }
+    setTimeout(() => {
+      el("copySnippetButton").textContent = "Copy example";
+    }, 1500);
+  });
 
   el("copyTokenButton").addEventListener("click", async () => {
     try {

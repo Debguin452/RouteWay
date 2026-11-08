@@ -57,7 +57,9 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     if (request.method === "OPTIONS") {
       return handleProxyPreflight(request, env, token);
     }
-    return handleProxy(request, env, token);
+    // Everything after /proxy/<token> is forwarded to the route's base URL (locked to its origin and path prefix).
+    const restPath = path.slice("/proxy/".length + token.length);
+    return handleProxy(request, env, token, restPath, url.search);
   }
 
   if (path === "/api/debug" && request.method === "GET") {
