@@ -11,7 +11,7 @@ import {
   handleRevokeToken,
 } from "./projects";
 import { handleProxy, handleProxyPreflight } from "./proxy";
-import { jsonError, corsHeaders } from "./responses";
+import { jsonError, jsonOk, corsHeaders } from "./responses";
 
 export { RateLimiter } from "./rateLimiter";
 
@@ -41,6 +41,13 @@ async function route(request: Request, env: Env): Promise<Response> {
       return handleProxyPreflight(request, env, token);
     }
     return handleProxy(request, env, token);
+  }
+
+  if (path === "/api/debug" && request.method === "GET") {
+    return jsonOk({
+      dashboardOriginSeenByWorker: env.DASHBOARD_ORIGIN ?? "NOT SET",
+      originSentByThisRequest: request.headers.get("origin") ?? "no origin header on a plain visit, that's expected",
+    });
   }
 
   if (!path.startsWith("/api/")) {
