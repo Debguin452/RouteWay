@@ -5,12 +5,12 @@ compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "secure-proxy-db"
-database_id = "replace-with-your-d1-database-id"
+database_name = "database"
+database_id = "15364a99-f4bc-40ec-aeb3-0ac0c0da655a"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "replace-with-your-kv-namespace-id"
+id = "c72d592431ca41b18f8c0b9a65cdcb89"
 
 [[durable_objects.bindings]]
 name = "RATE_LIMITER"
@@ -21,4 +21,4 @@ tag = "v1"
 new_sqlite_classes = ["RateLimiter"]
 
 [vars]
-DASHBOARD_ORIGIN = "https://your-dashboard.pages.dev"
+DASHBOARD_ORIGIN = "https://routeway.pages.dev"
