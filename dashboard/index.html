@@ -67,7 +67,12 @@
     <div id="projectDetail" class="project-detail" hidden>
       <div class="register-head">
         <h2 id="projectName"></h2>
-        <button id="newRouteButton" class="button button-small button-primary" type="button">New route</button>
+        <div class="register-head-actions">
+          <button id="renameProjectButton" class="button button-small" type="button">Rename</button>
+          <button id="pauseProjectButton" class="button button-small" type="button">Pause</button>
+          <button id="deleteProjectButton" class="button button-small button-danger" type="button">Delete</button>
+          <button id="newRouteButton" class="button button-small button-primary" type="button">New route</button>
+        </div>
       </div>
 
       <form id="newRouteForm" class="route-form" hidden>
@@ -107,16 +112,45 @@
             <input id="routeSecret" type="password" placeholder="Bearer sk-..." required />
           </label>
           <label class="field">
-            <span>Allowed browser origin (optional)</span>
-            <input id="routeAllowedOrigin" type="text" placeholder="https://myapp.com" />
+            <span>Allowed browser origins (optional)</span>
+            <input id="routeAllowedOrigin" type="text" placeholder="https://myapp.com, https://staging.myapp.com" />
+          </label>
+          <label class="field">
+            <span>Allowed methods (optional)</span>
+            <input id="routeAllowedMethods" type="text" placeholder="GET, POST" />
+          </label>
+          <label class="field">
+            <span>Allowed paths (optional)</span>
+            <input id="routeAllowedPaths" type="text" placeholder="/chat/completions, /models/*" />
+          </label>
+          <label class="field">
+            <span>Allowed caller IPs (optional)</span>
+            <input id="routeAllowedIps" type="text" placeholder="203.0.113.5, 10.0.0.0/8" />
+          </label>
+          <label class="field field-wide">
+            <span>Extra headers sent upstream (optional, one per line)</span>
+            <textarea id="routeExtraHeaders" rows="3" placeholder="anthropic-version: 2023-06-01"></textarea>
+            <small class="field-hint">Stored as plain text. Put secrets in the secret field, not here.</small>
           </label>
           <label class="field">
             <span>Rate limit (per minute)</span>
             <input id="routeRateLimit" type="number" min="1" max="6000" value="60" required />
           </label>
+          <label class="field">
+            <span>Timeout (seconds)</span>
+            <input id="routeTimeout" type="number" min="1" max="120" value="30" required />
+          </label>
+          <label class="field">
+            <span>Retries on 502/503/504 (GET and HEAD only)</span>
+            <select id="routeRetries">
+              <option value="0">None</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+            </select>
+          </label>
         </div>
         <div class="inline-form-actions">
-          <button type="submit" class="button button-primary">Create route</button>
+          <button type="submit" class="button button-primary" id="routeSubmit">Create route</button>
           <button type="button" class="button" id="cancelNewRoute">Cancel</button>
         </div>
       </form>
@@ -151,10 +185,13 @@
     <div class="route-row-meta">
       <span class="route-inject"></span>
       <span class="route-rate"></span>
+      <span class="route-usage"></span>
     </div>
     <div class="route-row-actions">
+      <button class="button button-small edit-route" type="button">Edit</button>
       <button class="button button-small toggle-pause" type="button"></button>
       <button class="button button-small show-tokens" type="button">Tokens</button>
+      <button class="button button-small button-danger delete-route" type="button">Delete</button>
     </div>
     <ul class="token-sublist" hidden></ul>
   </li>
@@ -163,6 +200,7 @@
 <template id="tokenRowTemplate">
   <li class="token-row">
     <span class="token-status"></span>
+    <span class="token-label"></span>
     <span class="token-created"></span>
     <button class="button button-small button-danger revoke-token" type="button">Revoke</button>
   </li>

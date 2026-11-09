@@ -506,3 +506,30 @@ button {
     animation: none;
   }
 }
+
+.register-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.route-usage,
+.token-label {
+  color: var(--muted, #6b6b6b);
+  font-size: 0.85em;
+}
+
+.token-label-input {
+  max-width: 160px;
+}
+
+textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #cfcfcf);
+  border-radius: 6px;
+  background: inherit;
+  color: inherit;
+  resize: vertical;
+}
