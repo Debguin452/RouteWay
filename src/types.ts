@@ -4,9 +4,7 @@ export interface Env {
   RATE_LIMITER: DurableObjectNamespace;
   MASTER_KEY: string;
   DASHBOARD_ORIGIN: string;
-  /** Optional. If set, /api/debug requires ?key=<DEBUG_TOKEN>. */
   DEBUG_TOKEN?: string;
-  /** Optional. PBKDF2 iterations for NEW password hashes (1000 to 100000, default 100000). Lower it if the free plan's 10 ms CPU limit is exceeded. */
   PBKDF2_ITERATIONS?: string;
 }
 
@@ -28,11 +26,18 @@ export interface RouteRecord {
   rate_limit_per_minute: number;
   paused: number;
   created_at: number;
+  timeout_seconds: number;
+  retries: number;
+  allowed_methods: string | null;
+  allowed_paths: string | null;
+  allowed_ips: string | null;
+  extra_headers: string | null;
 }
 
 export interface TokenJoinRow {
   token_id: string;
   token_revoked: number;
+  token_expires_at: number | null;
   route_id: string;
   target_url: string;
   inject_as: "header" | "query";
@@ -41,6 +46,23 @@ export interface TokenJoinRow {
   secret_iv: string;
   allowed_origin: string | null;
   rate_limit_per_minute: number;
+  timeout_seconds: number;
+  retries: number;
+  allowed_methods: string | null;
+  allowed_paths: string | null;
+  allowed_ips: string | null;
+  extra_headers: string | null;
   route_paused: number;
   project_paused: number;
+}
+
+export interface RouteSettings {
+  allowedOrigin: string | null;
+  allowedMethods: string | null;
+  allowedPaths: string | null;
+  allowedIps: string | null;
+  extraHeaders: string | null;
+  rateLimitPerMinute: number;
+  timeoutSeconds: number;
+  retries: number;
 }

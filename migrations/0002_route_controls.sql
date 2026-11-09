@@ -1,0 +1,8 @@
+ALTER TABLE routes ADD COLUMN timeout_seconds INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE routes ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE routes ADD COLUMN allowed_methods TEXT;
+ALTER TABLE routes ADD COLUMN allowed_paths TEXT;
+ALTER TABLE routes ADD COLUMN allowed_ips TEXT;
+ALTER TABLE routes ADD COLUMN extra_headers TEXT;
+ALTER TABLE tokens ADD COLUMN expires_at INTEGER;
+ALTER TABLE tokens ADD COLUMN label TEXT;

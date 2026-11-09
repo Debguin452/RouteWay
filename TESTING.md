@@ -39,6 +39,10 @@ Run through this against a deployed instance before giving the dashboard to anyo
 
 ## Proxy behavior
 
+- [ ] Route with base `https://httpbin.org/anything/api`: `/proxy/<token>/x/y?a=1` → upstream sees `/anything/api/x/y?a=1`.
+- [ ] `/proxy/<token>/../secret` and `/proxy/<token>/%2e%2e/secret` never reach the upstream: the runtime normalizes them away (you get 401/404), and anything that slips through, such as `/a%2fb`, returns 400 `invalid_path`.
+- [ ] A query parameter with the same name as the injected key cannot override the secret.
+
 - [ ] Point a route at a target URL that returns 500 → the proxy passes that 500 straight
       through with the upstream's body, not a generic error.
 - [ ] Point a route at a URL that doesn't resolve (typo the domain) → 502
@@ -65,3 +69,16 @@ Run through this against a deployed instance before giving the dashboard to anyo
       in a staging environment restored from a backup) → calling that route's proxy URL
       returns 500 `internal_error`, not a wrong-but-successful decryption. This confirms a
       wrong key fails loudly instead of silently forwarding garbage.
+
+## Route controls
+
+- [ ] Timeout: a 3 s upstream with a 2 s route timeout returns 504 `upstream_timeout`; with 6 s it succeeds.
+- [ ] Streaming: server-sent events arrive progressively, not all at the end.
+- [ ] Retries: with retries 2, an upstream returning 503 twice then 200 succeeds for GET; with 0 it returns 503.
+- [ ] Redirects from the upstream are returned as-is and not followed.
+- [ ] A 6 MB upload (chunked and with Content-Length) returns 413.
+- [ ] Allowed methods, origins (multiple), paths and IPs each return their specific 403/405 code when violated.
+- [ ] Extra headers reach the upstream and cannot be overridden by the caller.
+- [ ] Rotating the secret takes effect on the next request.
+- [ ] Token expiry and labels work; an expired token returns `token_expired`.
+- [ ] Pausing a project blocks its tokens; deleting a route or project invalidates its tokens.

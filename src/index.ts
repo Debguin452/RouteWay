@@ -6,6 +6,11 @@ import {
   handleListRoutes,
   handleCreateRoute,
   handlePauseRoute,
+  handleUpdateRoute,
+  handleDeleteRoute,
+  handleUpdateProject,
+  handleDeleteProject,
+  handleRotateSecret,
   handleListTokens,
   handleCreateToken,
   handleRevokeToken,
@@ -23,14 +28,10 @@ export default {
     const url = new URL(request.url);
     const isProxy = url.pathname.startsWith("/proxy/");
 
-    // CORS for the dashboard is decided up front and attached to EVERY non-proxy response,
-    // including crashes, 404s and the debug page. A cross-origin response without these headers
-    // is hidden from the browser and looks like "can't reach the server".
     const dashboardCors = isProxy
       ? {}
       : corsHeaders(request.headers.get("origin"), env.DASHBOARD_ORIGIN, true, request.headers.get("access-control-request-headers"));
 
-    // Preflight for dashboard routes is answered before anything that touches D1, KV or Durable Objects.
     if (!isProxy && request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: dashboardCors });
     }
@@ -57,7 +58,6 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     if (request.method === "OPTIONS") {
       return handleProxyPreflight(request, env, token);
     }
-    // Everything after /proxy/<token> is forwarded to the route's base URL (locked to its origin and path prefix).
     const restPath = path.slice("/proxy/".length + token.length);
     return handleProxy(request, env, token, restPath, url.search);
   }
@@ -104,12 +104,33 @@ async function handleApi(request: Request, env: Env, path: string): Promise<Resp
     return handleCreateProject(request, env, session.data);
   }
 
+  const projectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
+  if (projectMatch && request.method === "PATCH") {
+    return handleUpdateProject(request, env, session.data, projectMatch[1]);
+  }
+  if (projectMatch && request.method === "DELETE") {
+    return handleDeleteProject(env, session.data, projectMatch[1]);
+  }
+
   const routesMatch = path.match(/^\/api\/projects\/([^/]+)\/routes$/);
   if (routesMatch && request.method === "GET") {
     return handleListRoutes(env, session.data, routesMatch[1]);
   }
   if (routesMatch && request.method === "POST") {
     return handleCreateRoute(request, env, session.data, routesMatch[1]);
+  }
+
+  const routeMatch = path.match(/^\/api\/routes\/([^/]+)$/);
+  if (routeMatch && request.method === "PATCH") {
+    return handleUpdateRoute(request, env, session.data, routeMatch[1]);
+  }
+  if (routeMatch && request.method === "DELETE") {
+    return handleDeleteRoute(env, session.data, routeMatch[1]);
+  }
+
+  const secretMatch = path.match(/^\/api\/routes\/([^/]+)\/secret$/);
+  if (secretMatch && request.method === "POST") {
+    return handleRotateSecret(request, env, session.data, secretMatch[1]);
   }
 
   const pauseMatch = path.match(/^\/api\/routes\/([^/]+)\/pause$/);
@@ -122,7 +143,7 @@ async function handleApi(request: Request, env: Env, path: string): Promise<Resp
     return handleListTokens(env, session.data, tokensMatch[1]);
   }
   if (tokensMatch && request.method === "POST") {
-    return handleCreateToken(env, session.data, tokensMatch[1]);
+    return handleCreateToken(request, env, session.data, tokensMatch[1]);
   }
 
   const revokeMatch = path.match(/^\/api\/tokens\/([^/]+)\/revoke$/);

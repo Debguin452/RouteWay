@@ -18,8 +18,6 @@ function fromHex(hex: string): Uint8Array {
   return bytes;
 }
 
-// Cloudflare Workers rejects PBKDF2 iteration counts above 100,000 (NotSupportedError),
-// and `wrangler dev` does NOT enforce this, so it only fails once deployed.
 export const PBKDF2_ITERATIONS = 100_000;
 const HASH_PREFIX = "pbkdf2-sha256";
 
@@ -50,7 +48,6 @@ async function derive(password: string, salt: Uint8Array, iterations: number): P
   return toHex(bits);
 }
 
-/** The stored hash embeds its iteration count: pbkdf2-sha256$<iterations>$<hex>. */
 export function resolveIterations(configured?: string): number {
   const n = Number(configured);
   if (!configured || !Number.isInteger(n)) return PBKDF2_ITERATIONS;

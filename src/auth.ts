@@ -28,8 +28,6 @@ function clearSessionCookie(): string {
 }
 
 export async function getSession(request: Request, env: Env): Promise<{ sessionId: string; data: SessionData } | null> {
-  // Cookie first; fall back to a Bearer token for browsers that block third-party cookies
-  // (Safari, Chrome Incognito), since the dashboard and API live on different sites.
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
   const sessionId = parseCookies(request).session || bearer;
   if (!sessionId) return null;
@@ -85,7 +83,6 @@ export async function handleSignup(request: Request, env: Env): Promise<Response
   try {
     await createUser(env, userId, email, hash, salt);
   } catch (err) {
-    // Two simultaneous signups can both pass the check above; the UNIQUE constraint catches the loser.
     if (err instanceof Error && /UNIQUE|constraint/i.test(err.message)) {
       return jsonError("email_taken", "An account with this email already exists.", 409);
     }

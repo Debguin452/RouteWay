@@ -20,9 +20,13 @@ async function run(name: string, fn: () => Promise<string>): Promise<CheckResult
   }
 }
 
-const EXPECTED_TABLES = ["users", "projects", "routes", "tokens"];
+const EXPECTED_COLUMNS: Record<string, string[]> = {
+  users: ["id", "email", "password_hash", "password_salt"],
+  projects: ["id", "owner_id", "name", "paused"],
+  routes: ["id", "project_id", "target_url", "encrypted_secret", "timeout_seconds", "retries", "allowed_methods", "allowed_paths", "allowed_ips", "extra_headers"],
+  tokens: ["id", "route_id", "token_hash", "revoked", "expires_at", "label"],
+};
 
-/** Tests every dependency separately and reports plain text. Never prints secret values. */
 export async function handleDebug(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (env.DEBUG_TOKEN && url.searchParams.get("key") !== env.DEBUG_TOKEN) {
@@ -61,11 +65,19 @@ export async function handleDebug(request: Request, env: Env): Promise<Response>
     await run("D1: schema", async () => {
       const { results: rows } = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>();
       const have = new Set(rows.map((r) => r.name));
-      const missing = EXPECTED_TABLES.filter((t) => !have.has(t));
+      const missing = Object.keys(EXPECTED_COLUMNS).filter((t) => !have.has(t));
       if (missing.length) {
         throw new Error(`missing tables: ${missing.join(", ")}. Run: wrangler d1 execute <db-name> --remote --file=./schema.sql`);
       }
-      return `tables present: ${EXPECTED_TABLES.join(", ")}`;
+      for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
+        const { results: info } = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+        const present = new Set(info.map((c) => c.name));
+        const absent = columns.filter((c) => !present.has(c));
+        if (absent.length) {
+          throw new Error(`table ${table} is missing columns: ${absent.join(", ")}. Run: wrangler d1 execute <db-name> --remote --file=./migrations/0002_route_controls.sql`);
+        }
+      }
+      return `tables and columns present: ${Object.keys(EXPECTED_COLUMNS).join(", ")}`;
     })
   );
 

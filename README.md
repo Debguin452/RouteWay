@@ -36,6 +36,9 @@ wrangler d1 execute secure-proxy-db --remote --file=./schema.sql
 openssl rand -hex 32
 wrangler secret put MASTER_KEY
 # paste the hex string above when prompted
+
+# optional: protect /api/debug (then open /api/debug?key=<value>)
+wrangler secret put DEBUG_TOKEN
 ```
 
 Set `DASHBOARD_ORIGIN` in `wrangler.toml` to wherever you deploy `dashboard/` (e.g.
@@ -96,3 +99,48 @@ calls (it restricts CORS); it can't stop a server-to-server caller from using a 
 because a server can send any `Origin` header it likes or omit it. If you need to restrict
 *who* can call a token server-to-server, that has to be a different mechanism (e.g. requiring
 the caller to also know a shared secret) — origin checks are a browser-only protection.
+
+## Troubleshooting
+
+Open `https://<your-worker>/api/debug` in a browser. It tests config, D1 (connection and schema), KV, the Durable Object, secret encryption and password hashing separately, and prints which one fails in plain text. Set the optional `DEBUG_TOKEN` secret to require `?key=<value>`.
+
+Two platform behaviors worth knowing:
+
+- Workers rejects PBKDF2 above 100,000 iterations, and `wrangler dev` does not enforce this, so it only fails once deployed. Routeway uses exactly 100,000 and stores the iteration count inside each hash.
+- The dashboard (`pages.dev`) and API (`workers.dev`) are different sites, so browsers that block third-party cookies drop the session cookie. The Worker therefore also accepts the session as an `Authorization: Bearer` token, which the dashboard keeps in `sessionStorage`. For production, serve both from one parent domain instead.
+
+## Using a whole API through one route
+
+A route's URL is a **base**. Anything after the token is appended to it, so one route covers an entire API:
+
+```js
+// Route base URL: https://api.openai.com/v1   (secret injected as header Authorization)
+const res = await fetch("https://your-worker.workers.dev/proxy/spx_TOKEN/chat/completions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "Hello" }] }),
+});
+```
+
+Rules:
+- The upstream host can never change, and the path must stay under the base URL's path. `..`, encoded slashes and backslashes are rejected with `invalid_path`.
+- Your query string is forwarded. Query parameters already in the route's base URL, and the injected secret, always win.
+- Use a narrower base (`https://api.example.com/v1/public`) to expose less of an API.
+- A route with no extra path behaves exactly as before.
+- Your own `Authorization` and `Cookie` headers are never forwarded. The injected secret replaces them. Put the full value in the secret field if the API needs a prefix, for example `Bearer sk-...`.
+
+## Upgrading an existing deployment
+
+New columns were added for per-route controls. On an existing database run once:
+
+```bash
+wrangler d1 execute <db-name> --remote --file=./migrations/0002_route_controls.sql
+```
+
+New installs get everything from `schema.sql`. Then `wrangler deploy`, and check `/api/debug`.
+
+## More documentation
+
+- `docs/ARCHITECTURE.md`: how it works and why, including security decisions and trade-offs.
+- `docs/API.md`: dashboard API and proxy error codes.
+- `npm test` runs the unit tests (Node 22.6 or newer).

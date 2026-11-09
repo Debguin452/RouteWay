@@ -29,6 +29,12 @@ CREATE TABLE routes (
   rate_limit_per_minute INTEGER NOT NULL DEFAULT 60,
   paused INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
+  timeout_seconds INTEGER NOT NULL DEFAULT 30,
+  retries INTEGER NOT NULL DEFAULT 0,
+  allowed_methods TEXT,
+  allowed_paths TEXT,
+  allowed_ips TEXT,
+  extra_headers TEXT,
   UNIQUE(project_id, label)
 );
 
@@ -39,7 +45,9 @@ CREATE TABLE tokens (
   route_id TEXT NOT NULL REFERENCES routes(id),
   token_hash TEXT NOT NULL UNIQUE,
   revoked INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  label TEXT
 );
 
 CREATE INDEX idx_tokens_route ON tokens(route_id);

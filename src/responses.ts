@@ -1,18 +1,23 @@
 const normalizeOrigin = (o: string) => o.trim().replace(/\/+$/, "");
 
+export function originMatches(origin: string | null, allowedOrigins: string | null): boolean {
+  if (!origin || !allowedOrigins) return false;
+  const wanted = normalizeOrigin(origin);
+  return allowedOrigins.split(",").some((allowed) => normalizeOrigin(allowed) === wanted);
+}
+
 export function corsHeaders(
   origin: string | null,
   allowedOrigin: string,
   credentials: boolean,
   requestedHeaders: string | null = null
 ): Record<string, string> {
-  if (!origin || !allowedOrigin || normalizeOrigin(origin) !== normalizeOrigin(allowedOrigin)) return {};
+  if (!originMatches(origin, allowedOrigin)) return {};
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Origin": origin as string,
     "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    // Reflect what the browser asks for so custom headers (CSRF, Authorization, ...) never break preflight.
     "Access-Control-Allow-Headers": requestedHeaders || "Content-Type,X-CSRF-Token,Authorization",
-    "Access-Control-Expose-Headers": "Retry-After",
+    "Access-Control-Expose-Headers": "Retry-After,X-Request-Id,X-RateLimit-Limit,X-RateLimit-Remaining",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };
@@ -20,7 +25,6 @@ export function corsHeaders(
   return headers;
 }
 
-/** Returns a copy of the response with extra headers. Safe for responses with immutable headers (fetch results). */
 export function withHeaders(res: Response, extra: Record<string, string>): Response {
   if (res.status === 101) return res;
   const out = new Response(res.body, res);

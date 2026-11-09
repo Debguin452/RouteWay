@@ -1,4 +1,4 @@
-import type { Env, RouteRecord, TokenJoinRow } from "./types";
+import type { Env, RouteRecord, RouteSettings, TokenJoinRow } from "./types";
 
 export async function getUserByEmail(env: Env, email: string) {
   return env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<{
@@ -45,7 +45,8 @@ export async function createProject(env: Env, id: string, ownerId: string, name:
 export async function listRoutes(env: Env, projectId: string) {
   const { results } = await env.DB.prepare(
     `SELECT id, label, target_url, inject_as, inject_key, allowed_origin,
-            rate_limit_per_minute, paused, created_at
+            rate_limit_per_minute, paused, created_at, timeout_seconds, retries, allowed_methods,
+            allowed_paths, allowed_ips, extra_headers
      FROM routes WHERE project_id = ? ORDER BY created_at DESC`
   )
     .bind(projectId)
@@ -82,14 +83,21 @@ export async function createRoute(
     encryptedSecret: string;
     secretIv: string;
     allowedOrigin: string | null;
+    allowedMethods: string | null;
+    allowedPaths: string | null;
+    allowedIps: string | null;
+    extraHeaders: string | null;
     rateLimitPerMinute: number;
+    timeoutSeconds: number;
+    retries: number;
   }
 ) {
   await env.DB.prepare(
     `INSERT INTO routes
       (id, project_id, label, target_url, inject_as, inject_key, encrypted_secret, secret_iv,
-       allowed_origin, rate_limit_per_minute, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       allowed_origin, rate_limit_per_minute, created_at, timeout_seconds, retries, allowed_methods,
+       allowed_paths, allowed_ips, extra_headers)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       route.id,
@@ -102,8 +110,40 @@ export async function createRoute(
       route.secretIv,
       route.allowedOrigin,
       route.rateLimitPerMinute,
-      Date.now()
+      Date.now(),
+      route.timeoutSeconds,
+      route.retries,
+      route.allowedMethods,
+      route.allowedPaths,
+      route.allowedIps,
+      route.extraHeaders
     )
+    .run();
+}
+
+export async function updateRouteSettings(env: Env, routeId: string, settings: RouteSettings) {
+  await env.DB.prepare(
+    `UPDATE routes SET allowed_origin = ?, allowed_methods = ?, allowed_paths = ?, allowed_ips = ?, extra_headers = ?,
+            rate_limit_per_minute = ?, timeout_seconds = ?, retries = ?
+     WHERE id = ?`
+  )
+    .bind(
+      settings.allowedOrigin,
+      settings.allowedMethods,
+      settings.allowedPaths,
+      settings.allowedIps,
+      settings.extraHeaders,
+      settings.rateLimitPerMinute,
+      settings.timeoutSeconds,
+      settings.retries,
+      routeId
+    )
+    .run();
+}
+
+export async function updateRouteSecret(env: Env, routeId: string, encryptedSecret: string, secretIv: string) {
+  await env.DB.prepare("UPDATE routes SET encrypted_secret = ?, secret_iv = ? WHERE id = ?")
+    .bind(encryptedSecret, secretIv, routeId)
     .run();
 }
 
@@ -113,16 +153,23 @@ export async function setRoutePaused(env: Env, routeId: string, paused: boolean)
 
 export async function listTokensForRoute(env: Env, routeId: string) {
   const { results } = await env.DB.prepare(
-    "SELECT id, revoked, created_at FROM tokens WHERE route_id = ? ORDER BY created_at DESC"
+    "SELECT id, revoked, created_at, expires_at, label FROM tokens WHERE route_id = ? ORDER BY created_at DESC"
   )
     .bind(routeId)
     .all();
   return results;
 }
 
-export async function createToken(env: Env, id: string, routeId: string, tokenHash: string) {
-  await env.DB.prepare("INSERT INTO tokens (id, route_id, token_hash, created_at) VALUES (?, ?, ?, ?)")
-    .bind(id, routeId, tokenHash, Date.now())
+export async function createToken(
+  env: Env,
+  id: string,
+  routeId: string,
+  tokenHash: string,
+  expiresAt: number | null = null,
+  label: string | null = null
+) {
+  await env.DB.prepare("INSERT INTO tokens (id, route_id, token_hash, created_at, expires_at, label) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, routeId, tokenHash, Date.now(), expiresAt, label)
     .run();
 }
 
@@ -143,10 +190,12 @@ export async function revokeToken(env: Env, tokenId: string) {
 
 export async function getTokenWithRouteByHash(env: Env, tokenHash: string): Promise<TokenJoinRow | null> {
   return env.DB.prepare(
-    `SELECT tokens.id as token_id, tokens.revoked as token_revoked,
+    `SELECT tokens.id as token_id, tokens.revoked as token_revoked, tokens.expires_at as token_expires_at,
             routes.id as route_id, routes.target_url, routes.inject_as, routes.inject_key,
             routes.encrypted_secret, routes.secret_iv, routes.allowed_origin,
-            routes.rate_limit_per_minute, routes.paused as route_paused,
+            routes.rate_limit_per_minute, routes.timeout_seconds, routes.retries, routes.allowed_methods,
+            routes.allowed_paths, routes.allowed_ips, routes.extra_headers,
+            routes.paused as route_paused,
             projects.paused as project_paused
      FROM tokens
      JOIN routes ON routes.id = tokens.route_id
@@ -155,4 +204,23 @@ export async function getTokenWithRouteByHash(env: Env, tokenHash: string): Prom
   )
     .bind(tokenHash)
     .first<TokenJoinRow>();
+}
+
+export async function updateProject(env: Env, projectId: string, name: string, paused: boolean) {
+  await env.DB.prepare("UPDATE projects SET name = ?, paused = ? WHERE id = ?").bind(name, paused ? 1 : 0, projectId).run();
+}
+
+export async function deleteRoute(env: Env, routeId: string) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM tokens WHERE route_id = ?").bind(routeId),
+    env.DB.prepare("DELETE FROM routes WHERE id = ?").bind(routeId),
+  ]);
+}
+
+export async function deleteProject(env: Env, projectId: string) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM tokens WHERE route_id IN (SELECT id FROM routes WHERE project_id = ?)").bind(projectId),
+    env.DB.prepare("DELETE FROM routes WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
+  ]);
 }
