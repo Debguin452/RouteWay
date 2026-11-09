@@ -46,7 +46,7 @@ export async function listRoutes(env: Env, projectId: string) {
   const { results } = await env.DB.prepare(
     `SELECT id, label, target_url, inject_as, inject_key, allowed_origin,
             rate_limit_per_minute, paused, created_at, timeout_seconds, retries, allowed_methods,
-            allowed_paths, allowed_ips, extra_headers
+            allowed_paths, allowed_ips, extra_headers, client_rate_limit_per_minute, require_human
      FROM routes WHERE project_id = ? ORDER BY created_at DESC`
   )
     .bind(projectId)
@@ -87,6 +87,8 @@ export async function createRoute(
     allowedPaths: string | null;
     allowedIps: string | null;
     extraHeaders: string | null;
+    clientRateLimitPerMinute: number;
+    requireHuman: boolean;
     rateLimitPerMinute: number;
     timeoutSeconds: number;
     retries: number;
@@ -96,8 +98,8 @@ export async function createRoute(
     `INSERT INTO routes
       (id, project_id, label, target_url, inject_as, inject_key, encrypted_secret, secret_iv,
        allowed_origin, rate_limit_per_minute, created_at, timeout_seconds, retries, allowed_methods,
-       allowed_paths, allowed_ips, extra_headers)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       allowed_paths, allowed_ips, extra_headers, client_rate_limit_per_minute, require_human)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       route.id,
@@ -116,7 +118,9 @@ export async function createRoute(
       route.allowedMethods,
       route.allowedPaths,
       route.allowedIps,
-      route.extraHeaders
+      route.extraHeaders,
+      route.clientRateLimitPerMinute,
+      route.requireHuman ? 1 : 0
     )
     .run();
 }
@@ -124,7 +128,7 @@ export async function createRoute(
 export async function updateRouteSettings(env: Env, routeId: string, settings: RouteSettings) {
   await env.DB.prepare(
     `UPDATE routes SET allowed_origin = ?, allowed_methods = ?, allowed_paths = ?, allowed_ips = ?, extra_headers = ?,
-            rate_limit_per_minute = ?, timeout_seconds = ?, retries = ?
+            rate_limit_per_minute = ?, timeout_seconds = ?, retries = ?, client_rate_limit_per_minute = ?, require_human = ?
      WHERE id = ?`
   )
     .bind(
@@ -136,6 +140,8 @@ export async function updateRouteSettings(env: Env, routeId: string, settings: R
       settings.rateLimitPerMinute,
       settings.timeoutSeconds,
       settings.retries,
+      settings.clientRateLimitPerMinute,
+      settings.requireHuman ? 1 : 0,
       routeId
     )
     .run();
@@ -195,6 +201,7 @@ export async function getTokenWithRouteByHash(env: Env, tokenHash: string): Prom
             routes.encrypted_secret, routes.secret_iv, routes.allowed_origin,
             routes.rate_limit_per_minute, routes.timeout_seconds, routes.retries, routes.allowed_methods,
             routes.allowed_paths, routes.allowed_ips, routes.extra_headers,
+            routes.client_rate_limit_per_minute, routes.require_human,
             routes.paused as route_paused,
             projects.paused as project_paused
      FROM tokens

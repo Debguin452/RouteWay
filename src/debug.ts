@@ -23,7 +23,7 @@ async function run(name: string, fn: () => Promise<string>): Promise<CheckResult
 const EXPECTED_COLUMNS: Record<string, string[]> = {
   users: ["id", "email", "password_hash", "password_salt"],
   projects: ["id", "owner_id", "name", "paused"],
-  routes: ["id", "project_id", "target_url", "encrypted_secret", "timeout_seconds", "retries", "allowed_methods", "allowed_paths", "allowed_ips", "extra_headers"],
+  routes: ["id", "project_id", "target_url", "encrypted_secret", "timeout_seconds", "retries", "allowed_methods", "allowed_paths", "allowed_ips", "extra_headers", "client_rate_limit_per_minute", "require_human"],
   tokens: ["id", "route_id", "token_hash", "revoked", "expires_at", "label"],
 };
 
@@ -44,6 +44,12 @@ export async function handleDebug(request: Request, env: Env): Promise<Response>
       const seen = request.headers.get("origin");
       return `${o}` + (seen ? (seen.replace(/\/+$/, "") === o.replace(/\/+$/, "") ? " (matches this request's Origin)" : ` (WARNING: this request's Origin is ${seen}, which does not match)`) : "");
     })
+  );
+
+  results.push(
+    await run("config: TURNSTILE_SECRET", async () =>
+      env.TURNSTILE_SECRET ? "set" : "not set (only needed for routes that require human verification)"
+    )
   );
 
   results.push(

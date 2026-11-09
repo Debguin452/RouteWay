@@ -6,3 +6,5 @@ ALTER TABLE routes ADD COLUMN allowed_ips TEXT;
 ALTER TABLE routes ADD COLUMN extra_headers TEXT;
 ALTER TABLE tokens ADD COLUMN expires_at INTEGER;
 ALTER TABLE tokens ADD COLUMN label TEXT;
+ALTER TABLE routes ADD COLUMN client_rate_limit_per_minute INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE routes ADD COLUMN require_human INTEGER NOT NULL DEFAULT 0;

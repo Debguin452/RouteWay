@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: RouteSettings = {
   allowedIps: null,
   extraHeaders: null,
   rateLimitPerMinute: 60,
+  clientRateLimitPerMinute: 0,
+  requireHuman: false,
   timeoutSeconds: 30,
   retries: 0,
 };
@@ -217,6 +219,7 @@ export function applySettings(body: Record<string, unknown>, current: RouteSetti
 
   const numbers: [keyof RouteSettings, string, number, number, string, string][] = [
     ["rateLimitPerMinute", "rateLimitPerMinute", 1, LIMITS.rateLimitPerMinute, "invalid_rate_limit", "Rate limit must be a whole number between 1 and 6000 requests per minute."],
+    ["clientRateLimitPerMinute", "clientRateLimitPerMinute", 0, LIMITS.rateLimitPerMinute, "invalid_client_rate_limit", "Per-caller rate limit must be a whole number between 0 (off) and 6000 requests per minute."],
     ["timeoutSeconds", "timeoutSeconds", 1, LIMITS.timeoutSeconds, "invalid_timeout", `Timeout must be a whole number between 1 and ${LIMITS.timeoutSeconds} seconds.`],
     ["retries", "retries", 0, LIMITS.retries, "invalid_retries", `Retries must be a whole number between 0 and ${LIMITS.retries}.`],
   ];
@@ -225,6 +228,10 @@ export function applySettings(body: Record<string, unknown>, current: RouteSetti
     const n = Number(body[key]);
     if (!Number.isInteger(n) || n < min || n > max) return { error: { code, message } };
     (next[field] as number) = n;
+  }
+
+  if ("requireHuman" in body) {
+    next.requireHuman = body.requireHuman === true || body.requireHuman === "true" || body.requireHuman === 1;
   }
 
   return { value: next };

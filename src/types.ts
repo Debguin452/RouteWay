@@ -6,6 +6,9 @@ export interface Env {
   DASHBOARD_ORIGIN: string;
   DEBUG_TOKEN?: string;
   PBKDF2_ITERATIONS?: string;
+  TURNSTILE_SECRET?: string;
+  TURNSTILE_VERIFY_URL?: string;
+  ACTIVITY_LOG?: string;
 }
 
 export interface SessionData {
@@ -32,6 +35,8 @@ export interface RouteRecord {
   allowed_paths: string | null;
   allowed_ips: string | null;
   extra_headers: string | null;
+  client_rate_limit_per_minute: number;
+  require_human: number;
 }
 
 export interface TokenJoinRow {
@@ -52,6 +57,8 @@ export interface TokenJoinRow {
   allowed_paths: string | null;
   allowed_ips: string | null;
   extra_headers: string | null;
+  client_rate_limit_per_minute: number;
+  require_human: number;
   route_paused: number;
   project_paused: number;
 }
@@ -63,6 +70,8 @@ export interface RouteSettings {
   allowedIps: string | null;
   extraHeaders: string | null;
   rateLimitPerMinute: number;
+  clientRateLimitPerMinute: number;
+  requireHuman: boolean;
   timeoutSeconds: number;
   retries: number;
 }

@@ -35,6 +35,8 @@ CREATE TABLE routes (
   allowed_paths TEXT,
   allowed_ips TEXT,
   extra_headers TEXT,
+  client_rate_limit_per_minute INTEGER NOT NULL DEFAULT 0,
+  require_human INTEGER NOT NULL DEFAULT 0,
   UNIQUE(project_id, label)
 );
 

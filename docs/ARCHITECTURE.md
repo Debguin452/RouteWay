@@ -58,6 +58,28 @@ Evaluated in this order after the token, revocation, expiry and pause checks: al
 - **Paths** are exact or end in `*` for a prefix. `/models/*` also matches `/models`.
 - **Extra headers** are stored as plain JSON in D1, not encrypted. Secrets belong in the secret field.
 
+## Per-caller rate limiting and automatic blocks
+
+The route limit is shared by every caller of a token, so one abuser can use up everyone's quota. A per-caller limit (0 = off) counts each caller separately and is checked before the route limit.
+
+Callers are identified without storing IP addresses. The identifier is `HMAC-SHA256(subkey, utcDate | routeId | ip)`, truncated to 24 characters, where the subkey is derived from `MASTER_KEY` for this one purpose. It rotates every UTC day, differs per route, and cannot be reversed to an IP without the key. It exists only as a Durable Object name. It is never written to D1, logs or activity entries.
+
+Each caller has its own Durable Object, so counting is atomic. A caller who sends more than ten times their per-minute limit within one window is blocked for one hour (`client_blocked`, with `Retry-After`).
+
+## Human verification (Cloudflare Turnstile)
+
+A route can require a Turnstile token. The caller sends it in `X-Turnstile-Token`. The Worker verifies it with Cloudflare using the `TURNSTILE_SECRET` Worker secret and answers with a signed pass in `X-Routeway-Pass`, valid for 10 minutes. The caller sends the pass on later requests instead of solving a new challenge, and gets `human_required` when it expires.
+
+A pass is `v1.<payload>.<signature>`. The payload holds the route ID, the caller identifier above and an expiry. The signature is HMAC-SHA256 with a purpose-derived key, verified in constant time. A pass is therefore bound to one route and one caller on one day, and cannot be forged, extended or shared. Changing network (for example on mobile data) means verifying again.
+
+Verification order: access controls, per-caller limit, human check, route limit. The cheap Durable Object check runs before the outbound Turnstile call so that invalid tokens cannot be used to force unlimited verification requests. If Turnstile cannot be reached or the secret is missing, the route fails closed (`human_check_unavailable`, 503). The caller's IP is not sent to Cloudflare. Neither the Turnstile token nor the pass is forwarded upstream.
+
+`TURNSTILE_VERIFY_URL` overrides the verification endpoint. It exists for tests.
+
+## Activity log
+
+The per-route Durable Object keeps the last 100 requests: time, method, path, status, duration, country and a short reason code (for example `client_rate_limited`). It never stores IP addresses, query strings, headers, bodies, tokens or secrets. Paths are kept, so avoid putting sensitive identifiers in URL paths. Writes happen after the response is sent. Set the `ACTIVITY_LOG` variable to `off` to disable it. Each proxied request costs about two Durable Object requests (rate limit and log) plus one more when the per-caller limit is on, which matters on the free plan's daily Durable Object quota.
+
 ## Tokens
 
 Only the SHA-256 of a token is stored. Tokens can expire (1 to 365 days) and carry a label. Revocation is immediate. Expired tokens return `token_expired`.

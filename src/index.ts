@@ -8,6 +8,7 @@ import {
   handlePauseRoute,
   handleUpdateRoute,
   handleDeleteRoute,
+  handleRouteActivity,
   handleUpdateProject,
   handleDeleteProject,
   handleRotateSecret,
@@ -24,7 +25,7 @@ export { RateLimiter } from "./rateLimiter";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const isProxy = url.pathname.startsWith("/proxy/");
 
@@ -38,7 +39,7 @@ export default {
 
     let response: Response;
     try {
-      response = await route(request, env, url);
+      response = await route(request, env, url, ctx);
     } catch (err) {
       console.error("unhandled error", err instanceof Error ? err.stack : err);
       response = jsonError("internal_error", "Something went wrong on our end.", 500);
@@ -47,7 +48,7 @@ export default {
   },
 };
 
-async function route(request: Request, env: Env, url: URL): Promise<Response> {
+async function route(request: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
   const path = url.pathname;
 
   if (path.startsWith("/proxy/")) {
@@ -59,7 +60,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       return handleProxyPreflight(request, env, token);
     }
     const restPath = path.slice("/proxy/".length + token.length);
-    return handleProxy(request, env, token, restPath, url.search);
+    return handleProxy(request, env, ctx, token, restPath, url.search);
   }
 
   if (path === "/api/debug" && request.method === "GET") {
@@ -126,6 +127,11 @@ async function handleApi(request: Request, env: Env, path: string): Promise<Resp
   }
   if (routeMatch && request.method === "DELETE") {
     return handleDeleteRoute(env, session.data, routeMatch[1]);
+  }
+
+  const activityMatch = path.match(/^\/api\/routes\/([^/]+)\/activity$/);
+  if (activityMatch && request.method === "GET") {
+    return handleRouteActivity(env, session.data, activityMatch[1]);
   }
 
   const secretMatch = path.match(/^\/api\/routes\/([^/]+)\/secret$/);

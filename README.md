@@ -129,6 +129,12 @@ Rules:
 - A route with no extra path behaves exactly as before.
 - Your own `Authorization` and `Cookie` headers are never forwarded. The injected secret replaces them. Put the full value in the secret field if the API needs a prefix, for example `Bearer sk-...`.
 
+## Human verification setup (optional)
+
+1. In the Cloudflare dashboard open **Turnstile**, add a widget for your site's domain, and copy the secret key.
+2. Open your Worker, then **Settings, Variables and Secrets**, and add a secret named `TURNSTILE_SECRET`.
+3. In the route form, open **Who can call it** and tick **Require human verification**.
+
 ## Upgrading an existing deployment
 
 New columns were added for per-route controls. On an existing database run once:
@@ -142,5 +148,6 @@ New installs get everything from `schema.sql`. Then `wrangler deploy`, and check
 ## More documentation
 
 - `docs/ARCHITECTURE.md`: how it works and why, including security decisions and trade-offs.
-- `docs/API.md`: dashboard API and proxy error codes.
+- `docs/API.md`: dashboard API, proxy error codes and the human-verification headers.
+- `docs/MIUTCHAT.md`: using Routeway with MiutChat, and notes on its current rate limiting.
 - `npm test` runs the unit tests (Node 22.6 or newer).

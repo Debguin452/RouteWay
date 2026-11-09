@@ -21,7 +21,7 @@ import {
 } from "./db";
 import { encryptSecret, randomId, randomToken, sha256Hex } from "./crypto";
 import { jsonError, jsonOk } from "./responses";
-import { getRouteStats } from "./rateLimiter";
+import { getActivity, getRouteStats } from "./rateLimiter";
 
 const MAX_PROJECTS = 20;
 const MAX_ROUTES_PER_PROJECT = 50;
@@ -58,6 +58,8 @@ function settingsOf(route: RouteRecord) {
     allowedIps: route.allowed_ips,
     extraHeaders: route.extra_headers,
     rateLimitPerMinute: route.rate_limit_per_minute,
+    clientRateLimitPerMinute: route.client_rate_limit_per_minute,
+    requireHuman: route.require_human === 1,
     timeoutSeconds: route.timeout_seconds,
     retries: route.retries,
   };
@@ -206,6 +208,12 @@ export async function handleRotateSecret(request: Request, env: Env, session: Se
   const { ciphertext, iv } = await encryptSecret(secret, env.MASTER_KEY);
   await updateRouteSecret(env, routeId, ciphertext, iv);
   return jsonOk({ ok: true });
+}
+
+export async function handleRouteActivity(env: Env, session: SessionData, routeId: string): Promise<Response> {
+  const route = await getOwnedRoute(env, routeId, session.userId);
+  if (!route) return routeNotFound();
+  return jsonOk({ entries: await getActivity(env, routeId) });
 }
 
 export async function handleDeleteRoute(env: Env, session: SessionData, routeId: string): Promise<Response> {

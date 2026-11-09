@@ -176,6 +176,7 @@ async function selectProject(projectId) {
   const project = state.projects.find((p) => p.id === projectId);
   el("projectName").textContent = project ? project.name : "";
   el("pauseProjectButton").textContent = project && project.paused ? "Resume" : "Pause";
+  el("projectStatus").hidden = !(project && project.paused);
   el("tokenReveal").hidden = true;
   el("newRouteForm").hidden = true;
   await loadRoutes();
@@ -202,8 +203,14 @@ function renderRouteList() {
     const urlEl = node.querySelector(".route-url");
     urlEl.textContent = route.target_url;
     urlEl.title = route.target_url;
-    node.querySelector(".route-inject").textContent = `${route.inject_as}: ${route.inject_key}`;
-    node.querySelector(".route-rate").textContent = `${route.rate_limit_per_minute}/min · ${route.timeout_seconds}s`;
+    node.querySelector(".route-badge").hidden = !route.paused;
+    const chipList = node.querySelector(".route-chips");
+    for (const chip of routeChips(route)) {
+      const item = document.createElement("li");
+      item.className = chip.secure ? "chip chip-secure" : "chip";
+      item.textContent = chip.text;
+      chipList.appendChild(item);
+    }
     node.querySelector(".route-usage").textContent = describeUsage(route.stats);
     node.querySelector(".edit-route").addEventListener("click", () => startEditRoute(route));
     const deleteButton = node.querySelector(".delete-route");
@@ -215,6 +222,9 @@ function renderRouteList() {
 
     node.querySelector(".show-tokens").addEventListener("click", (event) =>
       toggleTokenSublist(route.id, event.currentTarget.closest(".route-row"))
+    );
+    node.querySelector(".show-activity").addEventListener("click", (event) =>
+      toggleActivity(route.id, event.currentTarget.closest(".route-row"))
     );
 
     list.appendChild(node);
@@ -273,6 +283,55 @@ async function togglePause(route, button) {
   });
 }
 
+function describeStatus(status) {
+  if (status >= 500) return "err";
+  if (status >= 400) return "warn";
+  return "ok";
+}
+
+async function toggleActivity(routeId, rowEl) {
+  const panel = rowEl.querySelector(".activity-panel");
+  if (!panel.hidden) {
+    panel.hidden = true;
+    return;
+  }
+  panel.innerHTML = "";
+  let entries = [];
+  try {
+    entries = (await api(`/api/routes/${routeId}/activity`)).entries || [];
+  } catch {
+    return;
+  }
+  const list = document.createElement("ul");
+  list.className = "activity-list";
+  if (!entries.length) {
+    const empty = document.createElement("li");
+    empty.className = "panel-empty";
+    empty.textContent = "No requests recorded yet.";
+    list.appendChild(empty);
+  }
+  for (const entry of entries) {
+    const item = document.createElement("li");
+    item.className = "activity-row";
+    const status = document.createElement("span");
+    status.className = `badge status-${describeStatus(entry.status)}`;
+    status.textContent = entry.status;
+    const main = document.createElement("span");
+    main.className = "activity-main";
+    main.textContent = `${entry.method} ${entry.path || "/"}`;
+    const meta = document.createElement("span");
+    meta.className = "activity-meta";
+    const parts = [new Date(entry.at).toLocaleTimeString(), `${entry.ms} ms`];
+    if (entry.country) parts.push(entry.country);
+    if (entry.note) parts.push(entry.note);
+    meta.textContent = parts.join(" · ");
+    item.append(status, main, meta);
+    list.appendChild(item);
+  }
+  panel.appendChild(list);
+  panel.hidden = false;
+}
+
 async function toggleTokenSublist(routeId, rowEl) {
   const sublist = rowEl.querySelector(".token-sublist");
   if (!sublist.hidden) {
@@ -289,49 +348,64 @@ function renderTokenSublist(routeId, sublist) {
   sublist.innerHTML = "";
   const tokens = state.tokensByRoute[routeId] || [];
 
+  const list = document.createElement("ul");
+  list.className = "token-list";
   for (const token of tokens) {
     const node = el("tokenRowTemplate").content.cloneNode(true);
-    node.querySelector(".token-status").textContent = token.revoked ? "revoked" : "active";
+    const status = node.querySelector(".token-status");
+    const expired = token.expires_at && token.expires_at < Date.now();
+    status.textContent = token.revoked ? "revoked" : expired ? "expired" : "active";
+    status.classList.add(token.revoked || expired ? "badge-off" : "badge-on");
     const expiry = token.expires_at ? `expires ${new Date(token.expires_at).toLocaleDateString()}` : "no expiry";
-    node.querySelector(".token-label").textContent = token.label || "";
-    node.querySelector(".token-created").textContent = `${new Date(token.created_at).toLocaleString()} · ${expiry}`;
+    node.querySelector(".token-label").textContent = token.label || "Unnamed token";
+    node.querySelector(".token-created").textContent = `Created ${new Date(token.created_at).toLocaleDateString()} · ${expiry}`;
     const revokeButton = node.querySelector(".revoke-token");
     if (token.revoked) {
-      revokeButton.disabled = true;
-      revokeButton.textContent = "Revoked";
+      revokeButton.hidden = true;
     } else {
       revokeButton.addEventListener("click", () =>
         withLoading(revokeButton, "Revoking...", () => revokeToken(routeId, token.id, sublist))
       );
     }
-    sublist.appendChild(node);
+    list.appendChild(node);
   }
+  if (!tokens.length) {
+    const empty = document.createElement("li");
+    empty.className = "panel-empty";
+    empty.textContent = "No tokens yet.";
+    list.appendChild(empty);
+  }
+  sublist.appendChild(list);
+
+  const issue = document.createElement("div");
+  issue.className = "token-issue";
 
   const labelInput = document.createElement("input");
   labelInput.type = "text";
   labelInput.maxLength = 40;
-  labelInput.placeholder = "Token label (optional)";
-  labelInput.className = "token-label-input";
-  sublist.appendChild(labelInput);
+  labelInput.placeholder = "Label, for example production web";
+  labelInput.className = "control token-issue-label";
+  issue.appendChild(labelInput);
 
   const expirySelect = document.createElement("select");
-  expirySelect.className = "token-expiry";
+  expirySelect.className = "control";
   for (const [value, label] of [["", "Never expires"], ["1", "Expires in 1 day"], ["7", "Expires in 7 days"], ["30", "Expires in 30 days"], ["90", "Expires in 90 days"]]) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
     expirySelect.appendChild(option);
   }
-  sublist.appendChild(expirySelect);
+  issue.appendChild(expirySelect);
 
   const addButton = document.createElement("button");
   addButton.type = "button";
-  addButton.className = "button button-small";
-  addButton.textContent = "Issue new token";
+  addButton.className = "button button-small button-primary";
+  addButton.textContent = "Issue token";
   addButton.addEventListener("click", () =>
     withLoading(addButton, "Issuing...", () => issueToken(routeId, sublist, expirySelect.value, labelInput.value.trim()))
   );
-  sublist.appendChild(addButton);
+  issue.appendChild(addButton);
+  sublist.appendChild(issue);
 }
 
 async function issueToken(routeId, sublist, expiresInDays, label) {
@@ -395,6 +469,30 @@ function headersToLines(stored) {
   }
 }
 
+function countItems(value) {
+  return value ? value.split(",").filter(Boolean).length : 0;
+}
+
+function routeChips(route) {
+  const chips = [
+    { text: `${route.inject_as === "header" ? "Header" : "Query"} · ${route.inject_key}` },
+    { text: `${route.rate_limit_per_minute}/min` },
+  ];
+  if (route.client_rate_limit_per_minute) chips.push({ text: `${route.client_rate_limit_per_minute}/min per caller`, secure: true });
+  chips.push({ text: `${route.timeout_seconds}s timeout` });
+  if (route.retries) chips.push({ text: `${route.retries} ${route.retries === 1 ? "retry" : "retries"}` });
+  if (route.allowed_methods) chips.push({ text: route.allowed_methods.split(",").join(" "), secure: true });
+  const paths = countItems(route.allowed_paths);
+  if (paths) chips.push({ text: `${paths} path ${paths === 1 ? "rule" : "rules"}`, secure: true });
+  const origins = countItems(route.allowed_origin);
+  if (origins) chips.push({ text: `${origins} ${origins === 1 ? "origin" : "origins"}`, secure: true });
+  if (route.allowed_ips) chips.push({ text: "IP allowlist", secure: true });
+  if (route.require_human) chips.push({ text: "Human check", secure: true });
+  const headers = route.extra_headers ? Object.keys(JSON.parse(route.extra_headers)).length : 0;
+  if (headers) chips.push({ text: `${headers} upstream ${headers === 1 ? "header" : "headers"}` });
+  return chips;
+}
+
 function describeUsage(stats) {
   if (!stats) return "";
   if (!stats.total) return "no requests yet";
@@ -410,6 +508,9 @@ function resetRouteForm() {
   el("routeSecret").required = true;
   el("routeSecret").placeholder = "Bearer sk-...";
   el("routeSubmit").textContent = "Create route";
+  document.querySelectorAll("#newRouteForm .form-section").forEach((section, index) => {
+    section.open = index === 0;
+  });
 }
 
 function startEditRoute(route) {
@@ -424,6 +525,9 @@ function startEditRoute(route) {
   el("routeAllowedPaths").value = route.allowed_paths || "";
   el("routeAllowedIps").value = route.allowed_ips || "";
   el("routeExtraHeaders").value = headersToLines(route.extra_headers);
+  el("routeClientRate").value = route.client_rate_limit_per_minute || 0;
+  el("routeRequireHuman").checked = Boolean(route.require_human);
+  for (const section of document.querySelectorAll("#newRouteForm .form-section")) section.open = true;
   el("routeRateLimit").value = route.rate_limit_per_minute;
   el("routeTimeout").value = route.timeout_seconds;
   el("routeRetries").value = String(route.retries);
@@ -460,6 +564,8 @@ async function handleNewRouteSubmit(event) {
     allowedPaths: el("routeAllowedPaths").value.trim(),
     allowedIps: el("routeAllowedIps").value.trim(),
     extraHeaders: el("routeExtraHeaders").value.trim(),
+    clientRateLimitPerMinute: Number(el("routeClientRate").value),
+    requireHuman: el("routeRequireHuman").checked,
     rateLimitPerMinute: Number(el("routeRateLimit").value),
     timeoutSeconds: Number(el("routeTimeout").value),
     retries: Number(el("routeRetries").value),

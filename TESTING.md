@@ -82,3 +82,12 @@ Run through this against a deployed instance before giving the dashboard to anyo
 - [ ] Rotating the secret takes effect on the next request.
 - [ ] Token expiry and labels work; an expired token returns `token_expired`.
 - [ ] Pausing a project blocks its tokens; deleting a route or project invalidates its tokens.
+
+## Abuse protection
+
+- [ ] Per-caller limit: caller A is limited after N requests while caller B is unaffected.
+- [ ] A caller sending more than ten times the limit in a window is blocked (`client_blocked`) for an hour.
+- [ ] Human gate: no token gives `human_required`, a bad token `human_check_failed`, an unreachable verifier `human_check_unavailable`.
+- [ ] A valid token returns `X-Routeway-Pass`; the pass alone works on later requests; a tampered pass, or a pass used from another caller, does not.
+- [ ] The upstream never receives `X-Turnstile-Token` or `X-Routeway-Pass`.
+- [ ] Activity shows recent requests with reason codes and contains no IP addresses.

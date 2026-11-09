@@ -17,7 +17,7 @@ export function corsHeaders(
     "Access-Control-Allow-Origin": origin as string,
     "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": requestedHeaders || "Content-Type,X-CSRF-Token,Authorization",
-    "Access-Control-Expose-Headers": "Retry-After,X-Request-Id,X-RateLimit-Limit,X-RateLimit-Remaining",
+    "Access-Control-Expose-Headers": "Retry-After,X-Request-Id,X-RateLimit-Limit,X-RateLimit-Remaining,X-Routeway-Pass,X-Routeway-Pass-Ttl",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };
